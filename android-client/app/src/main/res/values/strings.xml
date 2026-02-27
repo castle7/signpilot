@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">SignPilot</string>
+    <string name="accessibility_service_description">SignPilot 辅助服务，用于帮助听障用户操作手机并提供视觉教学指引</string>
+</resources>

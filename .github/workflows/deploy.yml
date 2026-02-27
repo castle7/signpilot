@@ -1,0 +1,66 @@
+name: Deploy to Google Cloud
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: asia-east1
+  SERVICE_NAME: signpilot-agent
+
+jobs:
+  deploy-agent:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Enable required APIs
+        run: |
+          gcloud services enable run.googleapis.com \
+            secretmanager.googleapis.com \
+            cloudbuild.googleapis.com \
+            artifactregistry.googleapis.com
+
+      - name: Create Gemini API Key secret (skip if exists)
+        run: |
+          gcloud secrets describe gemini-api-key --project=$PROJECT_ID 2>/dev/null || \
+          echo "${{ secrets.GEMINI_API_KEY }}" | \
+            gcloud secrets create gemini-api-key \
+              --data-file=- \
+              --project=$PROJECT_ID
+
+      - name: Deploy Agent to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE_NAME \
+            --source ./agent-service \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
+            --memory 4Gi \
+            --cpu 2 \
+            --timeout 3600 \
+            --min-instances 1 \
+            --execution-environment gen2 \
+            --project $PROJECT_ID
+
+      - name: Print Service URL
+        run: |
+          echo "✅ 部署成功！Service URL:"
+          gcloud run services describe $SERVICE_NAME \
+            --region $REGION \
+            --project $PROJECT_ID \
+            --format "value(status.url)"
